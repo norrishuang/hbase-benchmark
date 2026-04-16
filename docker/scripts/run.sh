@@ -38,6 +38,7 @@ cd /opt/ycsb
   -p fieldlength=1024 \
   -p insertproportion=1 \
   -p zeropadding=20 \
+  -p insertretrycount=3 \
   -p hbase.config=/opt/ycsb/conf/hbase-site.xml \
   -threads ${THREADS} \
   -s 2>&1 || echo "[WARN] YCSB exited with errors, continuing..."
