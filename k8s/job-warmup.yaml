@@ -1,0 +1,58 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: hbase-bench-warmup
+  namespace: default
+  labels:
+    app: hbase-benchmark
+    phase: warmup
+spec:
+  completions: 1
+  parallelism: 1
+  backoffLimit: 2
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app: hbase-benchmark
+        phase: warmup
+    spec:
+      nodeSelector:
+        alpha.eksctl.io/nodegroup-name: mng-mytest-m7i-xl
+      # 强制调度到 us-east-1a，与 EMR 同 AZ，避免跨 AZ 流量
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: topology.kubernetes.io/zone
+                    operator: In
+                    values:
+                      - us-east-1a
+      tolerations:
+        - operator: Exists
+      restartPolicy: Never
+      containers:
+        - name: ycsb
+          image: 812046859005.dkr.ecr.us-east-1.amazonaws.com/hbase-benchmark:latest
+          imagePullPolicy: Always
+          env:
+            - name: THREADS
+              value: "100"
+            - name: TABLE
+              value: "usertable_r8g"
+            - name: RECORD_COUNT
+              value: "100000000"
+            - name: OPERATION_COUNT
+              value: "100000000"
+            - name: POD_INDEX
+              value: "0"
+            - name: TOTAL_PODS
+              value: "1"
+          resources:
+            requests:
+              cpu: "3"
+              memory: "8Gi"
+            limits:
+              cpu: "4"
+              memory: "12Gi"

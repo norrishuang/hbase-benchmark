@@ -1,0 +1,13 @@
+# 10TB 写入压测 Workload
+# 每行约 1KB，总写入约 100.5 亿行 = 10TB
+recordcount=10050380509
+operationcount=10050380509
+workload=site.ycsb.workloads.CoreWorkload
+readallfields=true
+readproportion=0
+updateproportion=0
+scanproportion=0
+insertproportion=1
+fieldlength=1024
+fieldcount=1
+requestdistribution=zipfian

@@ -1,0 +1,48 @@
+<?xml version="1.0"?>
+<?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+<configuration>
+
+  <!-- ZooKeeper quorum: EMR Master private IP -->
+  <property>
+    <name>hbase.zookeeper.quorum</name>
+    <value>ip-10-192-10-103.ec2.internal</value>
+  </property>
+
+  <property>
+    <name>hbase.zookeeper.property.clientPort</name>
+    <value>2181</value>
+  </property>
+
+  <!-- HBase on S3 (EMRFS) -->
+  <property>
+    <name>hbase.rootdir</name>
+    <value>s3://emr-hive-us-east-1-812046859005/hbase</value>
+  </property>
+
+  <!-- 写入性能优化 -->
+  <property>
+    <name>hbase.client.write.buffer</name>
+    <value>16777216</value>
+  </property>
+
+  <property>
+    <name>hbase.client.pause</name>
+    <value>50</value>
+  </property>
+
+  <property>
+    <name>hbase.client.retries.number</name>
+    <value>10</value>
+  </property>
+
+  <property>
+    <name>hbase.rpc.timeout</name>
+    <value>120000</value>
+  </property>
+
+  <property>
+    <name>hbase.client.operation.timeout</name>
+    <value>240000</value>
+  </property>
+
+</configuration>
