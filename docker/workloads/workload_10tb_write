@@ -8,4 +8,4 @@ scanproportion=0
 insertproportion=1
 fieldlength=1024
 fieldcount=1
-requestdistribution=zipfian
+requestdistribution=uniform
