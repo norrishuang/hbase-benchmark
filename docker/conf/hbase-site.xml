@@ -5,7 +5,7 @@
   <!-- ZooKeeper quorum: EMR Master private IP -->
   <property>
     <name>hbase.zookeeper.quorum</name>
-    <value>ip-10-192-10-103.ec2.internal</value>
+    <value>10.192.10.215</value>
   </property>
 
   <property>
