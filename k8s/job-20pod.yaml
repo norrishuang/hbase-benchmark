@@ -1,0 +1,47 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: hbase-bench-20pod-v1
+  namespace: default
+  labels:
+    app: hbase-benchmark
+    phase: 20pod-test
+spec:
+  completions: 20
+  parallelism: 20
+  completionMode: Indexed
+  backoffLimit: 1
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app: hbase-benchmark
+        phase: 20pod-test
+    spec:
+      nodeSelector:
+        alpha.eksctl.io/nodegroup-name: mng-mytest-m7i-xl
+      tolerations:
+        - operator: Exists
+      restartPolicy: Never
+      containers:
+        - name: ycsb
+          image: 812046859005.dkr.ecr.us-east-1.amazonaws.com/hbase-benchmark:latest
+          imagePullPolicy: Always
+          env:
+            - name: THREADS
+              value: "100"
+            - name: TABLE
+              value: "usertable_r8g"
+            - name: ROWS_PER_POD
+              value: "50251902"
+            - name: POD_INDEX
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.annotations['batch.kubernetes.io/job-completion-index']
+          resources:
+            requests:
+              cpu: "2"
+              memory: "6Gi"
+            limits:
+              cpu: "3"
+              memory: "8Gi"

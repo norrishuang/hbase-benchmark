@@ -32,7 +32,7 @@
 | 集群 | emr-on-eks-cluster |
 | NodeGroup | mng-mytest-m7i-xl |
 | 实例类型 | m7i.xlarge |
-| 节点数 | 5 |
+| 节点数 | 按需扩缩（10~20） |
 
 ---
 
@@ -45,9 +45,9 @@
 | 参数 | 值 | 说明 |
 |---|---|---|
 | `hbase.emr.storageMode` | `s3` | 使用 S3 存储 |
-| `hbase.emr.wal.enabled` | `true` | 启用 WAL |
+| `hbase.emr.wal.enabled` | `true` | 启用 WAL（运行中不可修改） |
 
-### hbase-site
+### hbase-site（当前生效配置，2026-04-16 优化后）
 
 | 参数 | 值 | 默认值 | 说明 |
 |---|---|---|---|
@@ -55,16 +55,19 @@
 | `emr.wal.workspace` | `defaultWALworkspace` | — | WAL 工作空间 |
 | `hbase.hregion.majorcompaction` | `0` | 604800000 | **关闭** Major Compaction，压测期间避免 I/O 干扰 |
 | `hbase.regionserver.global.memstore.size` | `0.6` | 0.4 | MemStore 占 RS 堆内存 60%，提升写入缓冲 |
-| `hbase.hregion.memstore.flush.size` | `536870912` | 268435456 | MemStore flush 阈值 512MB（原 256MB），减少 flush 频率 |
+| `hbase.hregion.memstore.flush.size` | `536870912` | 268435456 | MemStore flush 阈值 512MB，减少 flush 频率 |
 | `hfile.block.cache.size` | `0.1` | 0.4 | BlockCache 降到 10%，纯写入不需要大缓存（memstore+blockcache ≤ 0.8）|
 | `hbase.hstore.compactionThreshold` | `10` | 8 | 触发 Minor Compaction 的 StoreFile 数量阈值 |
 | `hbase.hstore.blockingStoreFiles` | `200` | 20 | 超过此数量才阻塞写入，避免压测被限流 |
 | `hbase.regionserver.maxlogs` | `200` | 32 | RS 最大 WAL 数量，防止 WAL 过多触发 flush |
-| `hbase.regionserver.handler.count` | `150` | 30 | RPC 处理线程数（EMR 默认值） |
-| `hbase.ipc.server.callqueue.write.ratio` | `0.6` | 0.5 | 写入队列占比 60%（EMR 默认值） |
+| `hbase.regionserver.handler.count` | **`200`** | 30 | RPC 处理线程数（从 150 提升至 200）⬆️ |
+| `hbase.ipc.server.callqueue.write.ratio` | `0.6` | 0.5 | 写入队列占比 60% |
 | `hbase.client.write.buffer` | `16777216` | 2097152 | 客户端写缓冲 16MB |
+| `hbase.wal.regiongrouping.numgroups` | **`4`** | 1 | 每个 RS 并行 WAL 数量（multiwal 分组）⬆️ |
 
 > ⚠️ `hbase.regionserver.global.memstore.size` + `hfile.block.cache.size` 之和不能超过 **0.8**，否则 RegionServer 启动失败。
+>
+> ⚠️ 开启 EMR WAL 后不能同时配置 `hbase.wal.provider`，使用 `hbase.wal.regiongrouping.numgroups` 代替来实现并行 WAL。
 
 ### 重新应用配置
 
@@ -76,7 +79,7 @@ client = boto3.client('emr', region_name='us-east-1')
 configurations = [
     {"Classification": "hbase", "Properties": {
         "hbase.emr.storageMode": "s3",
-        "hbase.emr.wal.enabled": "true"
+        # 注意：hbase.emr.wal.enabled 不能在运行中的集群上修改
     }},
     {"Classification": "hbase-site", "Properties": {
         "emr.wal.workspace": "defaultWALworkspace",
@@ -88,9 +91,10 @@ configurations = [
         "hbase.hstore.compactionThreshold": "10",
         "hbase.ipc.server.callqueue.write.ratio": "0.6",
         "hbase.regionserver.global.memstore.size": "0.6",
-        "hbase.regionserver.handler.count": "150",
+        "hbase.regionserver.handler.count": "200",
         "hbase.regionserver.maxlogs": "200",
         "hfile.block.cache.size": "0.1",
+        "hbase.wal.regiongrouping.numgroups": "4",
     }}
 ]
 
@@ -126,6 +130,8 @@ create 'usertable_r8g',
 
 ## 压测参数（YCSB）
 
+### 标准 10TB 写入（10 pods）
+
 | 参数 | 值 | 说明 |
 |---|---|---|
 | Pod 数量 | 10 | 并行写入 |
@@ -135,18 +141,68 @@ create 'usertable_r8g',
 | fieldlength | 1024 | 每字段 1KB |
 | 总数据量 | ~10TB | — |
 
+### 吞吐极限测试（20 pods）
+
+| 参数 | 值 | 说明 |
+|---|---|---|
+| Pod 数量 | 20 | 并行写入 |
+| Threads/Pod | 100 | 每 Pod 并发线程 |
+| 每 Pod 行数 | 50,251,902 | 总计约 10 亿行 |
+| fieldcount | 1 | 每行 1 个字段 |
+| fieldlength | 1024 | 每字段 1KB |
+
 ### 启动压测
 
 ```bash
 # 1. 确认 RegionServer 全部在线
-echo 'status\nexit' | hbase shell
+echo 'status' | hbase shell
 
-# 2. 提交 Job
+# 2. 提交 10pod 标准 Job
 kubectl apply -f k8s/job-10tb.yaml
 
-# 3. 查看进度
+# 3. 提交 20pod 吞吐极限 Job
+kubectl apply -f k8s/job-20pod.yaml
+
+# 4. 查看进度
 kubectl logs -l app=hbase-benchmark --prefix --tail=2 | grep "sec:"
 ```
+
+---
+
+## 压测结果（2026-04-16）
+
+### 配置优化效果对比（4 × r8g.4xlarge RegionServer）
+
+| 配置 | 客户端 | 总吞吐（YCSB）| 单 RS 吞吐 | Avg 延迟 | P99 延迟 |
+|---|---|---|---|---|---|
+| 初始配置（handler=150，单 WAL）| 10 pods | ~46,800 ops/sec | ~11,700 | ~21ms | ~75ms |
+| **优化配置（handler=200，numgroups=4）**| **10 pods** | **~67,800 ops/sec** | **~17,000** | **~15ms** | **~42ms** |
+| 优化配置 | 20 pods | ~66,100 ops/sec | ~16,500 | ~15ms | ~42ms |
+
+> 优化配置相比初始配置，吞吐提升 **+45%**，P99 延迟降低 **-44%**。
+
+### 关键发现
+
+1. **WAL 并行化是核心优化**：`hbase.wal.regiongrouping.numgroups=4` 将每个 RS 的 WAL 串行瓶颈拆分为 4 路并行，是吞吐提升的主要来源。
+
+2. **RS 吞吐天花板约 ~17,000 YCSB ops/sec**（对应 ~34,000 HBase writes/sec，包括 WAL + MemStore）。4 个 RS 合计上限 ~68,000 ops/sec。
+
+3. **加客户端 Pod 无法突破 RS 瓶颈**：10 pods → 20 pods，总吞吐不增加（66K vs 68K），说明客户端已不是限制因素。
+
+4. **扩展 RegionServer 节点才能线性提升**：若将 Core 节点从 4 扩到 8，理论上吞吐可达 ~136,000 ops/sec。
+
+5. **实例升级（2xlarge → 4xlarge）对吞吐无明显提升**：根本瓶颈在于 WAL 串行写入，与 CPU/内存规格无关。
+
+### RegionServer 负载分布（优化后）
+
+| RegionServer | Region 数 | 写入速率（相对均衡）|
+|---|---|---|
+| ip-10-192-10-16 | 15 | ~25% |
+| ip-10-192-10-214 | 15 | ~25% |
+| ip-10-192-10-225 | 14 | ~25% |
+| ip-10-192-10-70 | 15 | ~25% |
+
+> 4 个 RS 负载均衡，误差 < 5%，预分裂 40 regions 效果良好。
 
 ---
 
@@ -168,3 +224,27 @@ EMR 管理的配置文件，手动修改会被 EMR 覆盖，且 RegionServer 重
 ### 3. EMR Master → Core Node SSH
 
 EMR hadoop 用户没有默认 SSH key，需要通过外部 pem key 中转（先 scp 到 master，再从 master 跳转）。**推荐用 EMR Reconfiguration API 替代直接 SSH 操作配置**。
+
+### 4. hbase.wal.provider 与 EMR WAL 不兼容
+
+开启 `hbase.emr.wal.enabled=true` 后，**不能同时配置 `hbase.wal.provider`**，否则 Reconfiguration API 报错：
+
+```
+You can't configure 'hbase.wal.provider' on a running cluster that uses Amazon EMR WAL.
+```
+
+**解决**：使用 `hbase.wal.regiongrouping.numgroups` 代替，EMR WAL 内部支持此参数实现并行分组。
+
+### 5. hbase.emr.wal.enabled 不能在运行中修改
+
+```
+You can't configure 'hbase.emr.wal.enabled' to enable or disable Amazon EMR WAL on a running Amazon EMR cluster.
+```
+
+**解决**：此参数只能在集群创建时设定，运行中 Reconfiguration 必须从配置中去掉该字段。
+
+### 6. 节点 NotReady 导致 pod NodeShutdown
+
+扩容后有旧节点处于 `NotReady,SchedulingDisabled` 状态，Job 的 pod 调度上去后立即 `NodeShutdown` 导致失败。
+
+**解决**：提交 Job 前先确认 `kubectl get nodes` 无 NotReady 节点，或对问题节点执行 `kubectl cordon` 排除。
