@@ -5,7 +5,7 @@
   <!-- ZooKeeper quorum: EMR Master private IP -->
   <property>
     <name>hbase.zookeeper.quorum</name>
-    <value>10.192.10.15</value>
+    <value>10.192.10.207</value>
   </property>
 
   <property>
@@ -13,10 +13,10 @@
     <value>2181</value>
   </property>
 
-  <!-- HBase on S3 (EMRFS) -->
+  <!-- HBase on S3 (EMRFS) with EMR WAL enabled -->
   <property>
     <name>hbase.rootdir</name>
-    <value>s3://elasticmapreduce/j-2TSHXOEFVY1CN/hbase</value>
+    <value>s3://emr-hive-us-east-1-812046859005/hbase</value>
   </property>
 
   <!-- 写入性能优化 -->

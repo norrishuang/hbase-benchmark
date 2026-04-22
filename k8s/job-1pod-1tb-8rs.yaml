@@ -1,0 +1,55 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: hbase-bench-1pod-1tb-8rs
+  namespace: default
+  labels:
+    app: hbase-benchmark
+    cluster: j-395KBAFSTTCD3
+    phase: 1pod-1tb-8rs
+spec:
+  completions: 1
+  parallelism: 1
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 604800
+  template:
+    metadata:
+      labels:
+        app: hbase-benchmark
+        phase: 1pod-1tb-8rs
+    spec:
+      nodeSelector:
+        alpha.eksctl.io/nodegroup-name: mng-mytest-m7i-xl
+      tolerations:
+        - operator: Exists
+      restartPolicy: Never
+      volumes:
+        - name: hbase-config
+          configMap:
+            name: hbase-site
+      containers:
+        - name: ycsb
+          image: 812046859005.dkr.ecr.us-east-1.amazonaws.com/hbase-benchmark:latest
+          imagePullPolicy: Always
+          volumeMounts:
+            - name: hbase-config
+              mountPath: /opt/ycsb/conf/hbase-site.xml
+              subPath: hbase-site.xml
+          env:
+            - name: THREADS
+              value: "100"
+            - name: TABLE
+              value: "usertable_r8g"
+            - name: ROWS_PER_POD
+              value: "1073741824"
+            - name: TOTAL_PODS
+              value: "1"
+            - name: POD_INDEX
+              value: "0"
+          resources:
+            requests:
+              cpu: "2"
+              memory: "6Gi"
+            limits:
+              cpu: "3"
+              memory: "8Gi"

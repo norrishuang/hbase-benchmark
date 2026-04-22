@@ -1,0 +1,52 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: hbase-recreate-table-8rs
+  namespace: default
+spec:
+  completions: 1
+  parallelism: 1
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 600
+  template:
+    spec:
+      nodeSelector:
+        alpha.eksctl.io/nodegroup-name: mng-mytest-m7i-xl
+      tolerations:
+        - operator: Exists
+      restartPolicy: Never
+      volumes:
+        - name: hbase-config
+          configMap:
+            name: hbase-site
+      containers:
+        - name: hbase-shell
+          image: 812046859005.dkr.ecr.us-east-1.amazonaws.com/hbase-benchmark:latest
+          imagePullPolicy: Always
+          volumeMounts:
+            - name: hbase-config
+              mountPath: /conf
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              set -e
+              cp /conf/hbase-site.xml $HBASE_HOME/conf/hbase-site.xml 2>/dev/null || \
+              cp /conf/hbase-site.xml /opt/hbase/conf/hbase-site.xml 2>/dev/null || true
+
+              HBASE_CMD=""
+              for p in /opt/hbase/bin/hbase /usr/local/hbase/bin/hbase /usr/bin/hbase; do
+                if [ -f "$p" ]; then HBASE_CMD="$p"; break; fi
+              done
+              echo "Using: $HBASE_CMD"
+
+              echo "=== Disable & Drop old table (if exists) ==="
+              printf "disable 'usertable_r8g'\ndrop 'usertable_r8g'\nexit\n" | $HBASE_CMD shell -n 2>&1 || true
+
+              echo "=== Create table with 80 pre-splits (8 RS x 10 regions) ==="
+              printf "n_splits = 80\ncreate 'usertable_r8g', {NAME => 'cf', COMPRESSION => 'Snappy'}, {SPLITS => (1..n_splits).map {|i| \"user\#{1000+i*(9999-1000)/n_splits}\"}}\nlist_regions 'usertable_r8g'\nexit\n" | $HBASE_CMD shell -n 2>&1
+
+              echo "=== Done ==="
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"

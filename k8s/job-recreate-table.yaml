@@ -1,0 +1,47 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: hbase-recreate-table
+  namespace: default
+spec:
+  completions: 1
+  parallelism: 1
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 600
+  template:
+    spec:
+      nodeSelector:
+        alpha.eksctl.io/nodegroup-name: mng-mytest-m7i-xl
+      tolerations:
+        - operator: Exists
+      restartPolicy: Never
+      containers:
+        - name: hbase-shell
+          image: 812046859005.dkr.ecr.us-east-1.amazonaws.com/hbase-benchmark:latest
+          imagePullPolicy: Always
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              set -e
+              echo "=== Checking hbase command ==="
+              HBASE_CMD=""
+              for p in /opt/hbase/bin/hbase /usr/local/hbase/bin/hbase /usr/bin/hbase; do
+                if [ -f "$p" ]; then HBASE_CMD="$p"; break; fi
+              done
+              if [ -z "$HBASE_CMD" ]; then
+                echo "hbase shell not found in image, aborting"
+                exit 1
+              fi
+              echo "Using: $HBASE_CMD"
+
+              echo "=== Disable & Drop table ==="
+              printf "disable 'usertable_r8g'\ndrop 'usertable_r8g'\nexit\n" | $HBASE_CMD shell -n 2>&1 || true
+
+              echo "=== Create table with 40 pre-splits ==="
+              printf "n_splits = 40\ncreate 'usertable_r8g', {NAME => 'cf', COMPRESSION => 'Snappy'}, {SPLITS => (1..n_splits).map {|i| \"user\#{1000+i*(9999-1000)/n_splits}\"}}\nlist_regions 'usertable_r8g'\nexit\n" | $HBASE_CMD shell -n 2>&1
+
+              echo "=== Done ==="
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
